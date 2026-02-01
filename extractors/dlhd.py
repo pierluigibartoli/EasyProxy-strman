@@ -585,23 +585,36 @@ class DLHDExtractor:
                 expires_at = cached_data.get("expires_at")
 
                 is_valid = False
-                
+                current_time = time.time()
+
                 # ✅ Check expiry first (con buffer di 30 secondi)
-                if expires_at and time.time() > (expires_at - 30):
+                if expires_at and current_time > (expires_at - 30):
                      logger.warning(f"⚠️ Cache expired for channel ID {channel_id} (expires_at: {expires_at}).")
                      is_valid = False
-                elif stream_url:
-                    try:
-                        async with aiohttp.ClientSession(timeout=ClientTimeout(total=10)) as validation_session:
-                            async with validation_session.head(stream_url, headers=stream_headers, ssl=False) as response:
-                                if response.status == 200:
-                                    is_valid = True
-                                    logger.info(f"✅ Cache for channel ID {channel_id} is valid.")
-                                else:
-                                    logger.warning(f"⚠️ Cache for channel ID {channel_id} not valid. Status: {response.status}. Proceeding with extraction.")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Error during cache validation for {channel_id}: {e}. Proceeding with extraction.")
-                
+                else:
+                    # ✅ Only validate with HEAD request if we're within 5 minutes of expiry
+                    # This reduces unnecessary network requests for fresh cache entries
+                    time_until_expiry = expires_at - current_time if expires_at else float('inf')
+                    validation_threshold = 300  # 5 minutes
+
+                    if time_until_expiry < validation_threshold:
+                        logger.info(f"🔍 Cache expires in {int(time_until_expiry)}s, validating with HEAD request...")
+                        try:
+                            # ✅ Use persistent session for cache validation instead of creating new one
+                            session = await self._get_session()
+                            async with session.head(stream_url, headers=stream_headers, ssl=False, timeout=ClientTimeout(total=10)) as response:
+                                    if response.status == 200:
+                                        is_valid = True
+                                        logger.info(f"✅ Cache for channel ID {channel_id} is valid.")
+                                    else:
+                                        logger.warning(f"⚠️ Cache for channel ID {channel_id} not valid. Status: {response.status}. Proceeding with extraction.")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Error during cache validation for {channel_id}: {e}. Proceeding with extraction.")
+                    else:
+                        # Cache is fresh enough, skip validation
+                        is_valid = True
+                        logger.info(f"✅ Cache for channel ID {channel_id} is valid (expires in {int(time_until_expiry)}s, skipping validation).")
+
                 if not is_valid:
                     if channel_id in self._stream_data_cache:
                         del self._stream_data_cache[channel_id]
