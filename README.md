@@ -1,3 +1,11 @@
+---
+title: EasyProxy
+emoji: 🚀
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
 # 🚀 EasyProxy - Universal Server Proxy for HLS Streaming
 
 [![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
